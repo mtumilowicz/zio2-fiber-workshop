@@ -5,8 +5,7 @@ import zio.Random._
 
 object M2 extends ZIOAppDefault {
 
-  override def run: ZIO[Any, Any, Any] =
-    program
+  override def run = program
 
   sealed trait Diagnostic
 
