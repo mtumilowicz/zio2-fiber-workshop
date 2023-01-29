@@ -5,9 +5,8 @@ import zio.Random._
 
 object M2 extends ZIOAppDefault {
 
-
   override def run: ZIO[Any, Any, Any] =
-    program.provideEnvironment(ZEnvironment(Random.RandomLive))
+    program
 
   sealed trait Diagnostic
 
@@ -17,12 +16,12 @@ object M2 extends ZIOAppDefault {
 
   case class Request[A](topic: Diagnostic, XRayImage: A)
 
-  trait RequestGenerator[R, A] {
-    def generate(topic: Diagnostic): URIO[R, Request[A]]
+  trait RequestGenerator[A] {
+    def generate(topic: Diagnostic): UIO[Request[A]]
   }
 
-  case class IntRequestGenerator() extends RequestGenerator[Random, Int] {
-    override def generate(topic: Diagnostic): URIO[Random, Request[Int]] =
+  case class IntRequestGenerator() extends RequestGenerator[Int] {
+    override def generate(topic: Diagnostic): UIO[Request[Int]] =
       nextIntBounded(1000) flatMap (n => ZIO.succeed(Request(topic, n)))
   }
 
@@ -100,7 +99,7 @@ object M2 extends ZIOAppDefault {
     def create[A] = ZIO.succeed(Exchange[A]())
   }
 
-  case class Producer[R, A](queue: Queue[Request[A]], generator: RequestGenerator[R, A]) {
+  case class Producer[A](queue: Queue[Request[A]], generator: RequestGenerator[A]) {
     def run = {
       val loop = for {
         _    <- Console.printLine("[XRayRoom] generating hip and knee request")
@@ -115,7 +114,7 @@ object M2 extends ZIOAppDefault {
   }
 
   object Producer {
-    def create[R, A](queue: Queue[Request[A]], generator: RequestGenerator[R, A]) = ZIO.succeed(Producer(queue, generator))
+    def create[A](queue: Queue[Request[A]], generator: RequestGenerator[A]) = ZIO.succeed(Producer(queue, generator))
   }
 
   val program = for {
