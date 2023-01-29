@@ -4,7 +4,15 @@
     * https://www.zionomicon.com/
     * https://scalac.io/blog/build-your-own-kafka-in-zio-queues-fibers/
     * https://blog.knoldus.com/everything-you-need-to-know-about-zio-fiber-and-its-operations-explained/
+    * [2022 - Tomasz Nurkiewicz - Loom: rewolucja czy szczegół implementacyjny?](https://www.youtube.com/watch?v=FVEpsgquheo)
+    * https://gist.github.com/mtsokol/0d6ab5473c04583899e3ffdcb7812959
 
+
+* linux thread ~ linux process
+  * from the kernel point of view, only processes exist
+  * so-called thread is just a different kind of process
+  * difference: flag (1 bit) - to share memory with parent
+    * yes => thread; no => process
 * A fiber is a concept that is beyond the ZIO library. In fact, it’s a concurrency model
 * Often, we refer to fibers as green threads.
 * A fiber is a schedulable computation, much like a thread. However, it’s only a data structure, which means it’s up to the ZIO runtime to schedule these fibers for execution (on the internal JVM thread pool)
@@ -18,6 +26,28 @@
      def fork: URIO[R, Fiber[E, A]]
    }
    ```
+* ZIO fibers provide the join method to wait for the termination of a fiber:
+    ```
+    trait Fiber[+E, +A] {
+      def join: IO[E, A]
+    }
+    ```
+    * Through the join method, we can wait for the result of concurrent computation and eventually use it
+* Interrupting a FiberPermalink
+    * Why should we interrupt a fiber? The main reason is that some action external to the fiber execution turns the fiber useless.
+    * So, to not waste system resources, it’s better to interrupt the fiber.
+    ```
+    trait Fiber[+E, +A] {
+      def interrupt: UIO[Exit[E, A]]
+    }
+    ```
+    * If the fiber already succeeded with its value when interrupted, then ZIO returns an instance of Exit.Success[A], an Exit.Failure[Cause.Interrupt] otherwise
+    * Unlike interrupting a thread, interrupting a fiber is an easy operation. In fact, the creation of a new Fiber is very lightweight. It doesn’t require the creation of complex structures in memory, as for threads. Interrupting a fiber simply tells the Executor that the fiber must not be scheduled anymore.
+* Finally, unlike threads, we can attach finalizers to a fiber.
+    * A finalizer will close all the resources used by the effect.
+    * The ZIO library guarantees that if an effect begins execution, its finalizers will always be run, whether the effect succeeds with a value, fails with an error, or is interrupted.
+* Last but not least, we can declare a fiber as uninterruptible. As the name suggests, an uninterruptible fiber will execute till the end even if it receives an interrupt signal.
+* So Fibers are data types for expressing concurrent computations. Fibers are loosely related to threads – a single Fiber can be executed on multiple threads by shifting between them – all with full resource safety!
 * Cats Effect and ZIO both rely on fibers
 * in ZIO world, Fiber is the closest analogy to Future
   * if we see fiber it is probably doing something or already evaluated
@@ -55,3 +85,6 @@
     * ZIO#foreachPar
     * ZIO#zipPar
     * ZIO#race
+
+* queues
+    * The effectful, back-pressured ZIO Queue makes it easy to avoid blocked threads on Queues core operations such as offer and take.
