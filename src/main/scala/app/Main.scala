@@ -9,7 +9,7 @@ object Main extends ZIOAppDefault {
     def loop(sayingBackgroundFiber: Ref[Fiber.Runtime[IOException, Long]]): Task[Unit] = for {
       read <- queue.take
       _ <- sayingBackgroundFiber.get.flatMap(_.interrupt)
-      fork <- sayPlease.delay(Duration.fromSeconds(10)).fork
+      fork <- sayPlease.delay(Duration.fromSeconds(5)).fork
       _ <- sayingBackgroundFiber.set(fork)
       _ <- Console.printLine(s"wrote: $read")
       _ <- loop(sayingBackgroundFiber)
@@ -32,7 +32,7 @@ object Main extends ZIOAppDefault {
 
   override def run: ZIO[Environment with ZIOAppArgs with Scope, Any, Any] = for {
     queue <- Queue.bounded[String](100)
-    _ <- say(queue).fork
+    _ <- say(queue).forever.fork
     _ <- program(queue)
   } yield ()
 }
