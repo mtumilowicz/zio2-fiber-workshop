@@ -7,7 +7,80 @@
     * [2022 - Tomasz Nurkiewicz - Loom: rewolucja czy szczegół implementacyjny?](https://www.youtube.com/watch?v=FVEpsgquheo)
     * https://gist.github.com/mtsokol/0d6ab5473c04583899e3ffdcb7812959
     * https://zio.dev/reference/
+    * https://www.quora.com/Whats-the-difference-between-green-threads-coroutines-lightweight-threads-and-fibers
+    * https://graphitemaster.github.io/fibers/
+    * https://www.developer.com/design/an-introduction-to-jvm-threading-implementation/
+    * https://www.developer.com/design/understanding-the-java-thread-model/
+    * https://medium.com/@ja.m.arunkumar/java-threads-part-1-7855b11ddb6
+    * https://nisal-pubudu.medium.com/understanding-threads-multi-threading-in-java-6e8c988d26af
+    * https://medium.com/platform-engineer/understanding-jvm-architecture-22c0ddf09722
 
+
+* Fibers are lightweight equivalents of operating system threads
+    * Like a thread, a fiber models a running computation and instructions on a single fiber are executed sequentially
+    * However, fibers are much less costly to create than operating system threads, so we can have hundreds of thousands of fibers in our program at any given time whereas maintaining this number of threads would have a severe performance impact
+    * Unlike threads, fibers are also safely interruptible and can be joined without blocking.
+* When we call unsafeRun the ZIO runtime creates a new fiber to execute our program
+    * At this point our program hasn’t started yet, but the Fiber represents a running program that we happen to not have started yet but will be running at
+    some point
+    * You can think of it as a Thread we have created to run our program logic but have not started yet.
+        * The ZIO runtime will then submit that Fiber for execution on some Executor.
+        * An Executor is typically backed by a thread pool in multithreaded environments.
+        * The Executor will then begin executing the ZIO program one instruction at a time on an underlying operating system thread, assuming one is available.
+        * However, the ZIO program will not necessarily run to completion. Instead after a certain number of instructions have been executed, the maximumYieldOpCount, the ZIO program will suspend execution and any remaining program logic will be submitted to the Executor.
+            * This ensure fairness.
+                * Say we have five fibers.
+                    * The first four fibers are performing long running computations with one million instructions each
+                    * The fifth fiber is performing a short computation with only one thousand instructions
+                    * If the Executor was backed by a fixed thread pool with four threads and we did not yield we would not get to start running the fifth fiber until all the other fibers had completed execution, resulting in a situation where the work of the fifth fiber was not really performed concurrently with the other fibers, leading to potentially unexpected and undesirable results.
+                    * If instead each fiber yields back to the runtime after every thousand instructions then the first four fibers do a small amount of work, then the fifth fiber gets to do its work, and then the other four fibers get to continue their work.
+                    * This creates the result of all five fibers running concurrently even though only four are ever actually running at any given moment.
+            * In essence, fibers represent units of “work” and the Executor switches between running each fiber for a brief period, just like the operating system switches between running each Thread for a small slice of time.
+                * The difference is that fibers are just data types we create that do not have the same operating system overhead as threads, and since we create the runtime we can build in logic for how we ensure fairness, how we handle interruption, and so on.
+* 2.2) Heap Area (Shared among Threads)
+  This is also a shared resource (only 1 heap area per JVM). Information of all objects and their corresponding instance variables and arrays are stored in the Heap area. Since the Method and Heap areas share memory for multiple threads, the data stored in Method & Heap areas are not thread safe.
+* https://github.com/mtumilowicz/java-stack
+    * 2.3) Stack Area (per Thread)
+      This is not a shared resource. For every JVM thread, when the thread starts, a separate runtime stack gets created in order to store method calls. For every such method call, one entry will be created and added (pushed) into the top of runtime stack and such entryit is called a Stack Frame.
+* A thread is simply a flow of execution, and every Java program have at least one thread known as a main thread.
+    * The main thread is created by the JVM whenever you run a java program.
+* In Java, there are two types of threads, Daemon threads and Non-Daemon threads
+    * In fact, JVM always waits until non-daemon threads to finish their work. It never exits until the last non-daemon thread finishes its work.
+* Multitasking can be divided into 2 categories based on its behavior.
+
+  Process-Based multitasking: When the operation system runs multiple processes at the same time.
+  Thread-Based multitasking: When two or more threads run concurrently, that belongs to a same process.
+* In java the order of threads’ executions cannot be predicted.
+* Before Java 1.3 there was a thing called Green thread model. The green thread is the simplest threading library of JVM scheduled threads. In this model, each thread is an abstraction within the VM. The JVM is completely responsible for its creation and manages the process of context switching within a single process of the operating system. The underlying operating system has no part to play and can be unaware of the existence of any thread within the process. The OS sees JVM as a single process and a single thread. Therefore, any thread created by JVM is supposed to be maintained by itself.
+* Current Java Releases use something called Native thread model. In the native thread model, the JVM creates and manages Java threads. But it does so use the thread API library of the underlying operating system.
+
+* JVM is a system that runs on top of the actual operating system. It has its own memory management scheme that works in sync with the underlying platform’s memory architecture.
+* Java memory manager specifies how a thread works with the synchronization process while accessing the shared variables. It segments the memory into two parts: a Stack area and the Heap area.
+    * Each running thread creates its own stack in the stack area; this stack contains all the information specific or local to the thread, such as all declared primitive variables and method calls. This area is not sharable between threads and the stack size changes dynamically according to the running condition of the thread.
+    * The heap area is for storing objects created by the Java application. These objects are sharable by all threads and can access the object’s method if it has a reference to it.
+
+* Green threads, coroutines, lightweight threads, and fibers are all different names for the same basic idea: multiple threads of execution in a single address space that cooperate with no or minimal kernel support.
+* Fibers are a lightweight thread of execution similar to OS threads. However, unlike OS threads, they’re cooperatively scheduled as opposed to preemptively scheduled. What this means in plain English is that fibers yield themselves to allow another fiber to run.
+    * You may have used something similar to this in your programming language of choice where it’s typically called a coroutine, there’s no real distinction between coroutines and fibers other than that coroutines are usually a language-level construct, while fibers tend to be a systems-level concept.
+* Other names for fibers you may have heard before include:
+  * green threads
+  * user-space threads
+  * coroutines
+  * tasklets
+  * microthreads
+* Scheduling
+    * Cooperative scheduling
+        * This idea of fibers yielding to each other is what is known as cooperative scheduling.
+        * Fibers effectively move the idea of context switching from kernel-space to user-space and then make those switches a fundamental part of computation, that is, they’re a deliberate and explicitly done thing, by the fibers themselves.
+        *
+    * Preemptive scheduling
+        * Most people familiar with threads know that you don’t have to yield to other threads to allow them to run. This is because most operating systems (OS) schedule threads preemptively.
+        * The points at which the OS may decide to preempt a thread include:
+
+          IO
+          sleeps
+          waits (seen in locking primitives)
+          interrupts (hardware events mostly)
 
 * While developing concurrent applications, there are several cases that we need to interrupt the execution of other fibers, for example:
     * A parent fiber might start some child fibers to perform a task, and later the parent might decide that, it doesn't need the result of some or all of the child fibers.
@@ -143,6 +216,12 @@
      def fork: URIO[R, Fiber[E, A]]
    }
    ```
+   * Forking creates a new fiber that executes the effect being forked concurrently with the current fiber.
+   * example
+        lazy val example2 = for { _ <- doSomething.fork
+        _ <- doSomethingElse
+        } yield ()
+        Here there is no guarantee about the order of execution of doSomething and doSomethingElse
 * ZIO fibers provide the join method to wait for the termination of a fiber:
     ```
     trait Fiber[+E, +A] {
@@ -150,6 +229,16 @@
     }
     ```
     * Through the join method, we can wait for the result of concurrent computation and eventually use it
+    * join waits for the result of a computation being performed concurrently and makes it available to the current computation.
+    * An important characteristic of join is that it does not block any underlying operating system threads
+        * When we join a fiber, execution in the current fiber can’t continue until the joined fiber completes execution
+        * But no actual thread will be blocked waiting for that to happen
+        * Instead, internally the ZIO runtime registers a callback to be invoked when the forked fiber completes execution and then the current fiber suspends execution
+    * Joining a fiber translates the result of that fiber back to the current fiber, so joining a fiber that has failed will result in a failure
+    * if we instead want to wait for the fiber but be able to handle its result whether it is a success or a failure we can use await
+        trait Fiber[+E, +A] {
+        def await: UIO[Exit[E, A]]
+        }
 * Interrupting a FiberPermalink
     * Why should we interrupt a fiber? The main reason is that some action external to the fiber execution turns the fiber useless.
     * So, to not waste system resources, it’s better to interrupt the fiber.
@@ -160,6 +249,15 @@
     ```
     * If the fiber already succeeded with its value when interrupted, then ZIO returns an instance of Exit.Success[A], an Exit.Failure[Cause.Interrupt] otherwise
     * Unlike interrupting a thread, interrupting a fiber is an easy operation. In fact, the creation of a new Fiber is very lightweight. It doesn’t require the creation of complex structures in memory, as for threads. Interrupting a fiber simply tells the Executor that the fiber must not be scheduled anymore.
+    * Interrupting a fiber says that we do not need this fiber to do its work anymore and it can immediately stop execution without returning a result
+    * If the fiber has already completed execution by the time it is interrupted the returned value will be the result of the fiber. Otherwise it will be a failure with Cause.Interrupt.
+    * We can interrupt a Thread by calling Thread.interrupt but this is a very “hard” way to stop a thread’s execution. When we interrupt a thread we have no guarantee that any finalizers associated with logic currently being executed by that thread will be run, so we could leave the system in an inconsistent state where we have opened a file but not closed it, or we have debited one bank
+      account without crediting another.
+        * In contrast, interrupting a fiber in ZIO causes any finalizers associated with that fiber to be run.
+    * Second, interruption in ZIO is much more efficient than interruption in thread based models because fibers themselves are so much more lightweight.
+        * A thread is quite expensive to create, relatively speaking, so even if we can interrupt a thread we have to be quite careful in doing so because we are destroying this valuable resource
+        * In contrast fibers are very cheap to create, so we can create many fibers to do our work and interrupt them when they aren’t needed anymore.
+        * Interruption just tells the ZIO runtime that there is no more work to do on this fiber.
 * Finally, unlike threads, we can attach finalizers to a fiber.
     * A finalizer will close all the resources used by the effect.
     * The ZIO library guarantees that if an effect begins execution, its finalizers will always be run, whether the effect succeeds with a value, fails with an error, or is interrupted.
@@ -205,3 +303,21 @@
 
 * queues
     * The effectful, back-pressured ZIO Queue makes it easy to avoid blocked threads on Queues core operations such as offer and take.
+
+
+* Fiber Supervision
+    * In the main fiber we fork parent and parent in turn forks child. Then we interrupt parent when child is still doing work. What should happen to child here?
+    * ZIO implements a fiber supervision model
+        1. Every fiber has a scope
+        2. Every fiber is forked in a scope
+        3. Fibers are forked in the scope of the current fiber unless otherwise specified
+        4. The scope of a fiber is closed when the fiber terminates, either through
+        success, failure, or interruption
+        5. When a scope is closed all fibers forked in that scope are interrupted
+    * The implication of this is that by default fibers can’t outlive the fiber that forked them
+    * If you do need to create a fiber that outlives its parent (e.g. to create some background process) you can fork a fiber on the global scope using forkDaemon.
+      trait ZIO[-R, +E, +A] {
+      def forkDaemon: URIO[R, Fiber[E, A]]
+      }
+
+* Normally, fibers will be executed by ZIO’s default Executor. However, sometimes we may want to execute some or all of an effect with a particular Executor. We already saw an example of this with our discussion of the Blocking service.
