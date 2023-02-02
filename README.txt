@@ -258,10 +258,39 @@
         * A thread is quite expensive to create, relatively speaking, so even if we can interrupt a thread we have to be quite careful in doing so because we are destroying this valuable resource
         * In contrast fibers are very cheap to create, so we can create many fibers to do our work and interrupt them when they aren’t needed anymore.
         * Interruption just tells the ZIO runtime that there is no more work to do on this fiber.
+    * This is true in the sense that ZIO effects describe rather than do things so we can run the same effect multiple times.
+        * But it is also true in the sense that a ZIO effect is literally a list of instructions.
+            val greet: UIO[Unit] = for {
+                name <- ZIO.succeed(StdIn.readLine("What's your name?"))
+            _ <- ZIO.succeed(println(s"Hello, $name!")) } yield ()
+        * First, every ZIO effect translates into one or more statements in this plan. Each statement describes one effect and operators like flatMap connect each of these statements togethers.
+          Second, constructors that import arbitrary code into a ZIO execute that code as a single statement.
+            * When we import Scala code into a ZIO using a constructor like succeed the ZIO runtime just sees a single block of Scala code, essentially a thunk () => A.
+            * The ZIO runtime has no way to know whether that Scala code is performing a simple statement, like reading a single line from the console, or a much more complex program like reading 10,000 lines from a file.
+            * This is important because the ZIO runtime checks for interruption before exe- cuting each instruction.
+        * Another implication is that in the absence of special logic the ZIO runtime does not know how to interrupt single blocks of side effecting code imported into ZIO.
+            val effect: UIO[Unit] = UIO.succeed {
+            var i = 0
+            while (i < 100000) {
+            println(i)
+            i += 1 }
+            }
+            * Here effect will not be interruptible during execution
+                * Interruption happens only “between” statements in our program and here effect is a single statement because it is just wrapping one block of Scala code.
+                * Normally this is not a problem because in most cases ZIO programs consist of large numbers of smaller statements glued together with operators like flatMap, so normally there are plenty of opportunities for interruption.
+            * Sometimes we do need to be able to interrupt an effect like this. For example, we may really want to perform an operation a hundred thousand times in a tight loop in a single effect for efficiency.
+              In this case we can use specialized constructors like attemptBlockingCancelable, attemptBlockingInterrupt, and asyncInterrupt to provide our own logic for how ZIO should interrupt the code we are importing.
+    * The basic rule is that interruption does not return until all logic associated with the interrupted effect has completed execution.
+        * When fiber is interrupted any finalizers associated with it will immediately begin execution
+        * If we want to interrupt an effect without waiting for the interruption to complete we can simply fork it.
+
 * Finally, unlike threads, we can attach finalizers to a fiber.
     * A finalizer will close all the resources used by the effect.
     * The ZIO library guarantees that if an effect begins execution, its finalizers will always be run, whether the effect succeeds with a value, fails with an error, or is interrupted.
 * Last but not least, we can declare a fiber as uninterruptible. As the name suggests, an uninterruptible fiber will execute till the end even if it receives an interrupt signal.
+    * Any part of a ZIO effect is either interruptible or uninterruptible. By default all ZIO effects are interruptible but some operators may make parts of a ZIO effect uninterruptible.
+    * The basic operators for controlling interruptibility are interruptible and uninterruptible.
+    * If the effect has been interrupted and is not interruptible it continues executing instructions as normal, checking each time whether the interruptibility status has changed.
 * So Fibers are data types for expressing concurrent computations. Fibers are loosely related to threads – a single Fiber can be executed on multiple threads by shifting between them – all with full resource safety!
 * Cats Effect and ZIO both rely on fibers
 * in ZIO world, Fiber is the closest analogy to Future
