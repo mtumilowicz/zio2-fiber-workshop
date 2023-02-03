@@ -16,8 +16,13 @@
     * https://nisal-pubudu.medium.com/understanding-threads-multi-threading-in-java-6e8c988d26af
     * https://medium.com/platform-engineer/understanding-jvm-architecture-22c0ddf09722
 
-## jvm thread model
-* Type of Workloads
+## general
+* linux thread ~ linux process
+  * from the kernel point of view, only processes exist
+  * so-called thread is just a different kind of process
+  * difference: flag (1 bit) - to share memory with parent
+    * yes => thread; no => process
+* type of workloads
     * CPU Work
         * pure computational firepower without involving any interaction and communication with the outside world
     * Blocking I/O
@@ -31,58 +36,77 @@
         * callbacks are the fundamental way by which all async code on the JVM works
             * no mechanism to support async code natively
             * drawback: not pretty and fun to work with
-* Most of the ZIO operations that one would expect to be blocking do actually not block the underlying thread, but they offer blocking semantics managed by ZIO. For example, every time we see something like ZIO.sleep or when we take something from a queue (queue.take) or offer something to a queue (queue.offer) or if we acquire a permit from a semaphore (semaphore.withPermit) and so forth, we are just blocking semantically without actually blocking an underlying thread
-    * If we use the corresponding methods in Java, like Thread.sleep or any of its lock machinery, then those methods are going to block a thread. So this is why we say that ZIO is 100% non-blocking, while Java threads are not.
-* 2.2) Heap Area (Shared among Threads)
-  This is also a shared resource (only 1 heap area per JVM). Information of all objects and their corresponding instance variables and arrays are stored in the Heap area. Since the Method and Heap areas share memory for multiple threads, the data stored in Method & Heap areas are not thread safe.
-* https://github.com/mtumilowicz/java-stack
-    * 2.3) Stack Area (per Thread)
-      This is not a shared resource. For every JVM thread, when the thread starts, a separate runtime stack gets created in order to store method calls. For every such method call, one entry will be created and added (pushed) into the top of runtime stack and such entryit is called a Stack Frame.
-* A thread is simply a flow of execution, and every Java program have at least one thread known as a main thread.
-    * The main thread is created by the JVM whenever you run a java program.
-* In Java, there are two types of threads, Daemon threads and Non-Daemon threads
-    * In fact, JVM always waits until non-daemon threads to finish their work. It never exits until the last non-daemon thread finishes its work.
-* Multitasking can be divided into 2 categories based on its behavior.
+* scheduling
+    * cooperative scheduling
+        * fibers yield to each other as required to preserve some level of fairness
+    * preemptive scheduling
+        * you don’t have to yield to other threads to allow them to run
+        * most operating systems (OS) schedule threads preemptively
+        * The points at which the OS may decide to preempt a thread include: IO, sleep, interrupt
+* green threads, coroutines, lightweight threads, and fibers are all different names
+for the same basic idea: multiple threads of execution in a single address space that
+cooperate with no or minimal kernel support
 
-  Process-Based multitasking: When the operation system runs multiple processes at the same time.
-  Thread-Based multitasking: When two or more threads run concurrently, that belongs to a same process.
-* In java the order of threads’ executions cannot be predicted.
-* Before Java 1.3 there was a thing called Green thread model. The green thread is the simplest threading library of JVM scheduled threads. In this model, each thread is an abstraction within the VM. The JVM is completely responsible for its creation and manages the process of context switching within a single process of the operating system. The underlying operating system has no part to play and can be unaware of the existence of any thread within the process. The OS sees JVM as a single process and a single thread. Therefore, any thread created by JVM is supposed to be maintained by itself.
-* Current Java Releases use something called Native thread model. In the native thread model, the JVM creates and manages Java threads. But it does so use the thread API library of the underlying operating system.
+## jvm thread model
+* every program have at least one thread known as a main thread
+    * main thread is created by the JVM whenever you run a java program
+    * thread is simply a flow of execution
+* there are two types of threads
+    * daemon threads
+    * non-daemon threads
+        * JVM always waits until non-daemon threads to finish their work
+        * never exits until the last non-daemon thread finishes its work
+* order of threads’ executions cannot be predicted
+* before Java 1.3 there was a thing called Green thread model
+    * simplest threading library of JVM scheduled threads
+    * each thread is an abstraction within the VM
+    * JVM is completely responsible for its creation and manages the process of context switching
+    * underlying operating system has no part to play and can be unaware of the existence of any thread within
+    the process
+        * OS sees JVM as a single process and a single thread
+* current Java Releases use something called Native thread model
+    * JVM creates and manages Java threads
+    * it does so use the thread API library of the underlying operating system
+* heap
+    * for storing objects created by the Java application
+    * shared resource (only 1 heap area per JVM)
+        * data is not thread safe
+* stack
+    * worth reviewing: https://github.com/mtumilowicz/java-stack
+    * not shared
+    * every JVM thread has its own
+    * Each running thread creates its own stack in the stack area
+    * contains all the information specific or local to the thread
+        * example: declared primitive variables and method calls
+* limitations of threads
+    * scarce
+        * threads on the JVM map to the operating system level threads which imposes an upper bound on the number of threads
+        * mapping from JVM threads to operating system threads is one-to-one
+            * mapping of fibers to threads is many-to-one
+    * expensive on creation
+        * in terms of time and memory complexity
+    * overhead on context switching
+    * lack of composability
+        * are not typed
+        * don't have a meaningful return type
+        * no type parameter for error
+            * expected to throw any exception of type Throwable to signal errors
+    * no guaranteed way to stop a thread
+        * request an interruption of the thread but the thread may not respond to the request
 
-* JVM is a system that runs on top of the actual operating system. It has its own memory management scheme that works in sync with the underlying platform’s memory architecture.
-* Java memory manager specifies how a thread works with the synchronization process while accessing the shared variables. It segments the memory into two parts: a Stack area and the Heap area.
-    * Each running thread creates its own stack in the stack area; this stack contains all the information specific or local to the thread, such as all declared primitive variables and method calls. This area is not sharable between threads and the stack size changes dynamically according to the running condition of the thread.
-    * The heap area is for storing objects created by the Java application. These objects are sharable by all threads and can access the object’s method if it has a reference to it.
 
-* Green threads, coroutines, lightweight threads, and fibers are all different names for the same basic idea: multiple threads of execution in a single address space that cooperate with no or minimal kernel support.
+## fibers
+
 * Other names for fibers you may have heard before include:
   * green threads
   * user-space threads
   * coroutines
-  * tasklets
-  * microthreads
-* There are some limitations with JVM threads:
+* Most of the ZIO operations that one would expect to be blocking do actually not block the underlying thread, but they offer blocking semantics managed by ZIO. For example, every time we see something like ZIO.sleep or when we take something from a queue (queue.take) or offer something to a queue (queue.offer) or if we acquire a permit from a semaphore (semaphore.withPermit) and so forth, we are just blocking semantically without actually blocking an underlying thread
+    * If we use the corresponding methods in Java, like Thread.sleep or any of its lock machinery, then those methods are going to block a thread. So this is why we say that ZIO is 100% non-blocking, while Java threads are not.
 
-  Threads are scarce — Threads on the JVM map to the operating system level threads which imposes an upper bound on the number of threads that we can have inside our application.
-
-  Expensive on creation — The creation of threads is expensive in terms of time and memory complexity.
-
-  Much Overhead on Context Switching — Switching between the execution of one thread to another thread is not cheap, it takes a lot of time.
-
-  Lack of Composability — Threads are not typed. They don't have a meaningful return type. In Java, when we create a thread, we have to provide a run function that returns void. So threads cannot finish with any specific value. Due to this limitation, we cannot compose threads. Also, a thread has no type parameter for error. It is expected to throw any exception of type Throwable to signal errors.
-* So whereas the mapping from JVM threads to operating system threads is one-to-one, the mapping of fibers to threads is many-to-one.
-    * Each JVM thread will end up executing anywhere from hundreds to thousands or even tens of thousands of fibers concurrently, by hopping back and forth between them as necessary.
+  * Each JVM thread will end up executing anywhere from hundreds to thousands or even tens of thousands of fibers concurrently, by hopping back and forth between them as necessary.
     * This gives us virtual threads that have the benefits of threads, but the scalability way beyond threads. In other words, fibers offer us massive concurrent lightweight green threading on the JVM.
-* JVM threads are expensive to create in terms of time and memory complexity. Also it takes a lot of time to switch between one thread of execution to another. In contrast to that, fibers are virtual, and as they use green threading, they are considered to be lightweight cooperative threads. This means that fibers always yield their executions to each other without the overhead of preemptive scheduling.
-* Threads in Java can be terminated via the stop method, but this is not a safe operation. The stop operation has been deprecated. So this is not a safe way to force kill a thread. Instead, we should try to request an interruption of the thread, but in this case, the thread may not respond to our request, and it may just go forever.
-* linux thread ~ linux process
-  * from the kernel point of view, only processes exist
-  * so-called thread is just a different kind of process
-  * difference: flag (1 bit) - to share memory with parent
-    * yes => thread; no => process
 
-## fibers
 * ZIO has one primary built-in fixed thread pool. This sort of workhorse thread pool is designed to be used for the majority of our application requirements. It has a certain number of threads in it and that stays constant over the lifetime of our application.
     * Why is that the case? Well because for the majority of workloads in our applications, it does not actually help things to create more threads than the number of CPU cores. If we have eight cores, it does not accelerate any sort of processing to create more than eight threads. Because at the end of the day our hardware is only capable of running eight things at the same time.
     * So for that reason, ZIO's default thread pool is fixed with a number of threads equal to the number of CPU cores. That is the best practice. That means that no matter how much work we create if we create a hundred thousand fibers, they will still run on a fixed number of threads.
