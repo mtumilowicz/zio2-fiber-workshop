@@ -14,7 +14,7 @@ object MainSpec extends ZIOSpecDefault {
         queue <- Queue.bounded[String](100)
         _ <- queue.offer("a")
         _ <- Main.program(queue).fork
-        _ <- TestClock.adjust(9.seconds)
+        _ <- TestClock.adjust(4.seconds)
         output <- TestConsole.output
       } yield assertTrue (output == Vector("say sth plz\n", "wrote: a\n"))
     },
@@ -23,7 +23,7 @@ object MainSpec extends ZIOSpecDefault {
         queue <- Queue.bounded[String](100)
         _ <- queue.offer("a")
         _ <- Main.program(queue).fork
-        _ <- TestClock.adjust(11.seconds)
+        _ <- TestClock.adjust(6.seconds)
         output <- TestConsole.output
       } yield assertTrue(output == Vector("say sth plz\n", "wrote: a\n", "say sth plz\n"))
     },
