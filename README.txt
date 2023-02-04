@@ -15,25 +15,37 @@
     * https://medium.com/@ja.m.arunkumar/java-threads-part-1-7855b11ddb6
     * https://nisal-pubudu.medium.com/understanding-threads-multi-threading-in-java-6e8c988d26af
     * https://medium.com/platform-engineer/understanding-jvm-architecture-22c0ddf09722
+    * https://stackoverflow.com/questions/4967885/jvm-option-xss-what-does-it-do-exactly
+    * https://www.quora.com/Why-a-context-switch-is-considered-an-overhead-task
+
+## preface
+* goals of this workshop
+    * introduction to ZIO fiber model
+    * understanding standard operations on fibers: interrupt, join
+    * understanding forking a fiber
+* workshop plan
+    * task: implement app that has background process that prints to console some message, but if you type something
+    in console - background process should not print anything for 5 sec
 
 ## general
 * linux thread ~ linux process
-  * from the kernel point of view, only processes exist
-  * so-called thread is just a different kind of process
-  * difference: flag (1 bit) - to share memory with parent
-    * yes => thread; no => process
+    * from the kernel point of view, only processes exist
+    * so-called thread is just a different kind of process
+    * difference: flag (1 bit) - to share memory with parent
+        * yes => thread; no => process
+* green threads, coroutines, lightweight threads, and fibers are all different names for the same basic idea
+    * multiple threads of execution in a single address space that cooperate with no or minimal kernel support
 * type of workloads
     * CPU Work
         * pure computational firepower without involving any interaction and communication with the outside world
     * Blocking I/O
-        * anything that involves reading from and writing to an external resource such as a file or a socket or web API
-        * inside Java, there are many methods that will put our thread to sleep
-            * example: read on a socket and there is nothing to read
+        * anything that involves reading from and writing to an external resource
+            * file or a socket or web API
     * Asynchronous I/O
         * is code that whenever it runs into something that it needs to wait on, instead of blocking
         and parking the thread, it registers a callback, and returns immediately
             * when the result is available then our callback will be invoked
-        * callbacks are the fundamental way by which all async code on the JVM works
+        * example: callbacks are the fundamental way by which all async code on the JVM works
             * no mechanism to support async code natively
             * drawback: not pretty and fun to work with
 * scheduling
@@ -42,147 +54,155 @@
     * preemptive scheduling
         * you don’t have to yield to other threads to allow them to run
         * most operating systems (OS) schedule threads preemptively
-        * The points at which the OS may decide to preempt a thread include: IO, sleep, interrupt
-* green threads, coroutines, lightweight threads, and fibers are all different names
-for the same basic idea: multiple threads of execution in a single address space that
-cooperate with no or minimal kernel support
+        * when OS may decide to preempt a thread include?
+            * IO, sleep, interrupt
 
 ## jvm thread model
-* every program have at least one thread known as a main thread
-    * main thread is created by the JVM whenever you run a java program
+* every program have at least one thread (main thread)
+    * is created by the JVM whenever you run a java program
     * thread is simply a flow of execution
 * there are two types of threads
     * daemon threads
     * non-daemon threads
-        * JVM always waits until non-daemon threads to finish their work
+        * JVM always waits for non-daemon threads to finish their work
         * never exits until the last non-daemon thread finishes its work
 * order of threads’ executions cannot be predicted
 * before Java 1.3 there was a thing called Green thread model
     * simplest threading library of JVM scheduled threads
     * each thread is an abstraction within the VM
     * JVM is completely responsible for its creation and manages the process of context switching
-    * underlying operating system has no part to play and can be unaware of the existence of any thread within
-    the process
+    * underlying operating system is unaware of the existence of any thread within the process
         * OS sees JVM as a single process and a single thread
 * current Java Releases use something called Native thread model
     * JVM creates and manages Java threads
-    * it does so use the thread API library of the underlying operating system
-* heap
-    * for storing objects created by the Java application
-    * shared resource (only 1 heap area per JVM)
-        * data is not thread safe
-* stack
-    * worth reviewing: https://github.com/mtumilowicz/java-stack
-    * not shared
-    * every JVM thread has its own
-    * Each running thread creates its own stack in the stack area
-    * contains all the information specific or local to the thread
-        * example: declared primitive variables and method calls
+        * uses thread API library of the underlying operating system
+* memory model refresher
+    * heap
+        * for storing objects created by the Java application
+        * shared resource (only 1 heap area per JVM)
+            * data is not thread safe
+    * stack
+        * worth reviewing: https://github.com/mtumilowicz/java-stack
+        * not shared
+        * every JVM thread has its own
+        * each running thread creates its own stack in the stack area
+        * contains all the information specific or local to the thread
+            * example: declared primitive variables and method calls
+        * `-Xss` flag is used to "set thread stack size"
+            * default size: 1024 KB for 64-bit JVMs
 * limitations of threads
     * scarce
-        * threads on the JVM map to the operating system level threads which imposes an upper bound on the number of threads
         * mapping from JVM threads to operating system threads is one-to-one
+            * imposes an upper bound on the number of threads
             * mapping of fibers to threads is many-to-one
     * expensive on creation
         * in terms of time and memory complexity
     * overhead on context switching
+        * in practice, the way the OS switches between threads and processes used to be
+            1. interrupt the running thread
+            1. store the context of the interrupted thread
+            1. run the OS scheduler to decide what to do next
+            1. flush the cache, if necessary
+            1. load the context of the next thread/process
+            1. begin executing that thread/process
     * lack of composability
         * are not typed
         * don't have a meaningful return type
         * no type parameter for error
             * expected to throw any exception of type Throwable to signal errors
     * no guaranteed way to stop a thread
-        * request an interruption of the thread but the thread may not respond to the request
+        * thread can be interrupted via `Thread#interrupt` from another thread, but it may refuse the interruption request and continue processing
 
 
-## fibers
-
-* Other names for fibers you may have heard before include:
-  * green threads
-  * user-space threads
-  * coroutines
-* Most of the ZIO operations that one would expect to be blocking do actually not block the underlying thread, but they offer blocking semantics managed by ZIO. For example, every time we see something like ZIO.sleep or when we take something from a queue (queue.take) or offer something to a queue (queue.offer) or if we acquire a permit from a semaphore (semaphore.withPermit) and so forth, we are just blocking semantically without actually blocking an underlying thread
-    * If we use the corresponding methods in Java, like Thread.sleep or any of its lock machinery, then those methods are going to block a thread. So this is why we say that ZIO is 100% non-blocking, while Java threads are not.
-
-  * Each JVM thread will end up executing anywhere from hundreds to thousands or even tens of thousands of fibers concurrently, by hopping back and forth between them as necessary.
-    * This gives us virtual threads that have the benefits of threads, but the scalability way beyond threads. In other words, fibers offer us massive concurrent lightweight green threading on the JVM.
-
-* ZIO has one primary built-in fixed thread pool. This sort of workhorse thread pool is designed to be used for the majority of our application requirements. It has a certain number of threads in it and that stays constant over the lifetime of our application.
-    * Why is that the case? Well because for the majority of workloads in our applications, it does not actually help things to create more threads than the number of CPU cores. If we have eight cores, it does not accelerate any sort of processing to create more than eight threads. Because at the end of the day our hardware is only capable of running eight things at the same time.
-    * So for that reason, ZIO's default thread pool is fixed with a number of threads equal to the number of CPU cores. That is the best practice. That means that no matter how much work we create if we create a hundred thousand fibers, they will still run on a fixed number of threads.
-    * The ZIO#attemptBlocking is interruptible by default, but its interruption will not translate to JVM thread interruption. Instead, we can use ZIO#attemptBlockingInterrupt to translate the ZIO interruption of that effect into JVM thread interruption.
-
-    * What if though, we have a CPU Work operation that takes a really long time to run? Let's say 30 seconds it does pure CPU Work very computationally intensive? What happens if we take that single gigantic function and put that into a ZIO#attempt? In that case there is no way for the ZIO Runtime to force that fiber to yield to other fibers.
-        * In this situation, the ZIO Runtime cannot preserve some level of fairness, and that single big CPU operation monopolizes the underlying thread. It is not a good practice to monopolize the underlying thread.
-        * o how can we determine that our CPU Work can yield quickly or not?
-
-          If that overall CPU Work composes many ZIO operations, then due to the composition of ZIO operations, it has a chance to yield quickly to other fibers and doesn't monopolize a thread.
-          If that CPU work doesn't compose any ZIO operations, or we lift that from a legacy library, then the ZIO Runtime doesn't have any chance of yielding quickly to other fibers. So this fiber is going to monopolize the underlying thread.
-        * So as a rule of thumb, when we have a huge CPU Work that is not chunked with built-in ZIO operations, and thus going to monopolize the underlying thread, we should run that on a dedicated thread pool that is designed to perform CPU-driven tasks.
-    * ZIO has a special thread pool that can be used to do these computations. That's the blocking thread pool. The ZIO#blocking operator and its variants (see here) can be used to run a big CPU Work on a dedicated thread. So, it doesn't interfere with all the other work that is going on simultaneously in the ZIO Runtime system.
-
-* In Java, a thread can be interrupted via Thread#interrupt from another thread, but it may refuse the interruption request and continue processing. Unlike Java, in ZIO when a fiber interrupts another fiber, we know that the interruption occurs, and it always works.
-    * All fibers are interruptible by default. To make an effect uninterruptible we can use Fiber#uninterruptible, ZIO#uninterruptible or ZIO.uninterruptible. ZIO provides also the reverse direction of these methods to make an uninterruptible effect interruptible.
-* A fiber is a schedulable computation, much like a thread. However, it’s only a data structure, which means it’s up to the ZIO runtime to schedule these fibers for execution (on the internal JVM thread pool)
-* Unlike a system/JVM thread which is expensive to start and stop, fibers are cheap to allocate and remove.
-* Hence, we can create millions of fibers and switch between them without the overheads associated with threads.
-* A fiber is a concept that is beyond the ZIO library. In fact, it’s a concurrency model
-* Often, we refer to fibers as green threads.
-* The ZIO library represents fibers using the type Fiber[E, A], which means a computation that will produce a result of type A or will fail with the type E
-    * Moreover, ZIO executes fibers using an Executor, which is a sort of abstraction over a thread pool.
-* in ZIO world, Fiber is the closest analogy to Future
-  * if we see fiber it is probably doing something or already evaluated
-  * two core methods are: join and interrupt
-    * no start method, as soon as fiber is created it is started as well
-* So Fibers are data types for expressing concurrent computations. Fibers are loosely related to threads – a single Fiber can be executed on multiple threads by shifting between them – all with full resource safety!
+## zio fibers
+* other names
+    * green threads
+    * user-space threads
+    * coroutines
+* virtual threads that have the benefits of threads
+    * scalability way beyond threads
+        * each JVM thread will end up executing anywhere from hundreds to thousands or even tens
+        of thousands of fibers concurrently
+            * by hopping back and forth between them as necessary
+    * is a concept that is beyond the ZIO library
+    * it’s a concurrency model
+    * we’re measuring threads versus CPU cores and fibers versus GB of heap
+* in the ZIO model, all code runs on fibers
+    * there is no code in Java that does not execute on a thread
+    * example: main function in ZIO that returns an effect
+        * we don't explicitly fork a fiber, the effect will be executed on what is called the main fiber
+            * it's a top-level fiber
+    * analogy: main function in Java then that main function will execute on the main thread
+* fiber models a running computation and instructions on a single fiber are executed sequentially
+    * fibers give no guarantees as to which thread they execute on
+* single JVM thread will execute many fibers
 * Cats Effect and ZIO both rely on fibers
-* fibers
-  * if it is not doing active work and can't do active work - will be garbage collected
-  * you don't have to take care of explicitly shutting them down
-  * it’s up to the ZIO runtime to schedule these fibers for execution (on the internal JVM thread pool)
-  * Moreover, ZIO executes fibers using an Executor, which is a sort of abstraction over a thread pool
-  * ZIO fibers don’t block any thread during the waiting associated with the call of the join method
-  * If the fiber already succeeded with its value when interrupted, then ZIO returns an instance of Exit.Success[A], an Exit.Failure[Cause.Interrupt] otherwise
-    * Unlike interrupting a thread, interrupting a fiber is an easy operation
-    * Interrupting a fiber simply tells the Executor that the fiber must not be scheduled anymore
-    * As the name suggests, an uninterruptible fiber will execute till the end even if it receives an interrupt signal.
-  * Notice that we’re measuring threads versus CPU cores and fibers versus GB of heap
-  * But since creating the fiber itself — and running the IO on a separate thread — is an effect, the returned fiber is wrapped in another IO instance
-  * usually you don't work with fork & join but with higher level operators:
-    * ZIO#foreachPar
-    * ZIO#zipPar
-    * ZIO#race
-* Fibers are lightweight equivalents of operating system threads
-    * Like a thread, a fiber models a running computation and instructions on a single fiber are executed sequentially
-    * However, fibers are much less costly to create than operating system threads, so we can have hundreds of thousands of fibers in our program at any given time whereas maintaining this number of threads would have a severe performance impact
-    * Unlike threads, fibers are also safely interruptible and can be joined without blocking.
-* When we call unsafeRun the ZIO runtime creates a new fiber to execute our program
-    * At this point our program hasn’t started yet, but the Fiber represents a running program that we happen to not have started yet but will be running at
-    some point
-    * You can think of it as a Thread we have created to run our program logic but have not started yet.
-        * The ZIO runtime will then submit that Fiber for execution on some Executor.
-        * An Executor is typically backed by a thread pool in multithreaded environments.
-        * The Executor will then begin executing the ZIO program one instruction at a time on an underlying operating system thread, assuming one is available.
-        * However, the ZIO program will not necessarily run to completion. Instead after a certain number of instructions have been executed, the maximumYieldOpCount, the ZIO program will suspend execution and any remaining program logic will be submitted to the Executor.
-            * This ensure fairness.
-                * Say we have five fibers.
-                    * The first four fibers are performing long running computations with one million instructions each
-                    * The fifth fiber is performing a short computation with only one thousand instructions
-                    * If the Executor was backed by a fixed thread pool with four threads and we did not yield we would not get to start running the fifth fiber until all the other fibers had completed execution, resulting in a situation where the work of the fifth fiber was not really performed concurrently with the other fibers, leading to potentially unexpected and undesirable results.
-                    * If instead each fiber yields back to the runtime after every thousand instructions then the first four fibers do a small amount of work, then the fifth fiber gets to do its work, and then the other four fibers get to continue their work.
-                    * This creates the result of all five fibers running concurrently even though only four are ever actually running at any given moment.
-            * In essence, fibers represent units of “work” and the Executor switches between running each fiber for a brief period, just like the operating system switches between running each Thread for a small slice of time.
-                * The difference is that fibers are just data types we create that do not have the same operating system overhead as threads, and since we create the runtime we can build in logic for how we ensure fairness, how we handle interruption, and so on.
-* A Fiber can be thought of as a virtual thread. A Fiber is the analog of a Java thread (java.lang.Thread), but it performs much better. Fibers are implemented in such a fashion that a single JVM thread will execute many fibers. We can think of fibers as unbounded JVM threads.
-* It's worth mentioning that in the ZIO model, all code runs on fibers. There is no such thing as code that is executed outside of fibers. When we create a main function in ZIO that returns an effect, then even if we don't explicitly fork a fiber, the effect will be executed on what is called the main fiber. It's a top-level fiber.
-    * It's just like if we have a main function in Java then that main function will execute on the main thread. There is no code in Java that does not execute on a thread. All code executes on a thread even if you didn't create a thread.
-* By default, fibers give no guarantees as to which thread they execute on. They may shift between threads, especially as they execute for long periods of time.
-* Finally, unlike threads, we can attach finalizers to a fiber.
-    * A finalizer will close all the resources used by the effect.
-    * The ZIO library guarantees that if an effect begins execution, its finalizers will always be run, whether the effect succeeds with a value, fails with an error, or is interrupted.
-* Normally, fibers will be executed by ZIO’s default Executor. However, sometimes we may want to execute some or all of an effect with a particular Executor. We already saw an example of this with our discussion of the Blocking service.
+* it’s only a data structure
+    * it’s up to the ZIO runtime to schedule these fibers for execution (on the internal JVM thread pool)
+    * we can create millions of fibers and switch between them without the overheads associated with threads
+* fibers are cheap to start and stop
+* represented using the type `Fiber[E, A]`
+    * computation that will produce a result of type A or will fail with the type E
+* closest analogy to Future
+    * if we see fiber it is probably doing something or already evaluated
+        * returned fiber is wrapped in another IO instance
+    * two core methods are: join and interrupt
+        * no start method, as soon as fiber is created it is started as well
+* ZIO executes fibers using an Executor, which is a sort of abstraction over a thread pool
+    * one primary built-in fixed thread pool
+        * designed to be used for the majority of our application requirements
+        * has a certain number of threads in it and that stays constant over the lifetime of our application
+            * it does not actually help things to create more threads than the number of CPU cores
+                * example: if we have eight cores, it does not accelerate any sort of processing to create more than eight threads
+                    * hardware is only capable of running eight things at the same time.
+            * ZIO's default thread pool is fixed with a number of threads equal to the number of CPU cores
+        * problem: pure CPU Work operation that takes a really long time to run
+            * if that overall CPU Work composes many ZIO operations, it has a chance to yield quickly to other
+            fibers and doesn't monopolize a thread.
+                * if not => ZIO Runtime doesn't have any chance of yielding quickly to other fibers
+                    * so this fiber is going to monopolize the underlying thread
+                    * example: we lift some function from a legacy library using `ZIO#attempt`
+            * solution: when we have a huge CPU Work that is not chunked with built-in ZIO operations we should run that on a dedicated thread pool
+                * designed to perform CPU-driven tasks
+                * ZIO has a special thread pool that can be used to do these computations
+                    * blocking thread pool
+                    * operator: `ZIO#blocking` and its variants
+* non blocking operations
+    * most of the ZIO operations do not block the underlying thread
+        * they offer blocking semantics managed by ZIO
+            * just blocking semantically without actually blocking an underlying thread
+        * example: ZIO.sleep, queue.take, queue.offer, semaphore.withPermit
+    * vs Java counterparts block a thread
+        * example: Thread.sleep or any of its lock machinery
+    * ZIO is 100% non-blocking, while Java threads are not
+* we can attach finalizers to a fiber
+    * unlike threads
+    * finalizer will close all the resources used by the effect
+    * ZIO library guarantees that if an effect begins execution, its finalizers will always be run
+        * irrespective of whether the effect succeeds with a value, fails with an error, or is interrupted
+* under the hood
+    * When we call unsafeRun the ZIO runtime creates a new fiber to execute our program
+        * At this point our program hasn’t started yet, but the Fiber represents a running program that we happen to not have started yet but will be running at
+        some point
+        * You can think of it as a Thread we have created to run our program logic but have not started yet.
+            * The ZIO runtime will then submit that Fiber for execution on some Executor.
+            * An Executor is typically backed by a thread pool in multithreaded environments.
+            * The Executor will then begin executing the ZIO program one instruction at a time on an underlying operating system thread, assuming one is available.
+            * However, the ZIO program will not necessarily run to completion. Instead after a certain number of instructions have been executed, the maximumYieldOpCount, the ZIO program will suspend execution and any remaining program logic will be submitted to the Executor.
+                * This ensure fairness.
+                    * Say we have five fibers.
+                        * The first four fibers are performing long running computations with one million instructions each
+                        * The fifth fiber is performing a short computation with only one thousand instructions
+                        * If the Executor was backed by a fixed thread pool with four threads and we did not yield we would not get to start running the fifth fiber until all the other fibers had completed execution, resulting in a situation where the work of the fifth fiber was not really performed concurrently with the other fibers, leading to potentially unexpected and undesirable results.
+                        * If instead each fiber yields back to the runtime after every thousand instructions then the first four fibers do a small amount of work, then the fifth fiber gets to do its work, and then the other four fibers get to continue their work.
+                        * This creates the result of all five fibers running concurrently even though only four are ever actually running at any given moment.
+                * In essence, fibers represent units of “work” and the Executor switches between running each fiber for a brief period, just like the operating system switches between running each Thread for a small slice of time.
+                    * The difference is that fibers are just data types we create that do not have the same operating system overhead as threads, and since we create the runtime we can build in logic for how we ensure fairness, how we handle interruption, and so on.
 
 ### interrupting
+* All fibers are interruptible by default. To make an effect uninterruptible we can use Fiber#uninterruptible, ZIO#uninterruptible or ZIO.uninterruptible. ZIO provides also the reverse direction of these methods to make an uninterruptible effect interruptible.
+* Unlike Java, in ZIO when a fiber interrupts another fiber, we know that the interruption occurs, and it always works.
+* The ZIO#attemptBlocking is interruptible by default, but its interruption will not translate to JVM thread interruption. Instead, we can use ZIO#attemptBlockingInterrupt to translate the ZIO interruption of that effect into JVM thread interruption.
 * Last but not least, we can declare a fiber as uninterruptible. As the name suggests, an uninterruptible fiber will execute till the end even if it receives an interrupt signal.
     * Any part of a ZIO effect is either interruptible or uninterruptible. By default all ZIO effects are interruptible but some operators may make parts of a ZIO effect uninterruptible.
     * The basic operators for controlling interruptibility are interruptible and uninterruptible.
@@ -328,6 +348,11 @@ cooperate with no or minimal kernel support
 * Using ZIO#forkDaemon, the effect is fork into a new fiber attached to the global scope. This means that the forked fiber will continue to run when the previous fiber that executed the returned effect terminates.
 
 ### join
+* If the fiber already succeeded with its value when interrupted, then ZIO returns an instance of Exit.Success[A], an Exit.Failure[Cause.Interrupt] otherwise
+  * Unlike interrupting a thread, interrupting a fiber is an easy operation
+  * Interrupting a fiber simply tells the Executor that the fiber must not be scheduled anymore
+  * As the name suggests, an uninterruptible fiber will execute till the end even if it receives an interrupt signal.
+* ZIO fibers don’t block any thread during the waiting associated with the call of the join method
 * fork means run in the background; join means wait for a result
 * ZIO fibers provide the join method to wait for the termination of a fiber:
     ```
@@ -353,5 +378,7 @@ cooperate with no or minimal kernel support
     * The zipPar combinator has resource-safe semantics. If one computation fails, the other computation will be interrupted, to prevent wasting resources.
 * Two actions can be raced, which means they will be executed in parallel, and the value of the first action that completes successfully will be returned.
     * The race combinator is resource-safe, which means that if one of the two actions returns a value, the other one will be interrupted, to prevent wasting resources.
-
-
+* usually you don't work with fork & join but with higher level operators:
+  * ZIO#foreachPar
+  * ZIO#zipPar
+  * ZIO#race
