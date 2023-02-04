@@ -197,39 +197,38 @@
                     * even though only four are ever actually running at any given moment.
 
 ### fork
+* forking creates a new fiber that executes the effect being forked concurrently with the current fiber
+    ```
+    trait ZIO[-R, +E, +A] {
+      def fork: URIO[R, Fiber[E, A]]
+    }
+    ```
+    * example
+        ```
+         lazy val example2 = for {
+             _ <- doSomething.fork
+             _ <- doSomethingElse
+         } yield ()
+         ```
+         * disclaimer: there is no guarantee about the order of execution of `doSomething` and `doSomethingElse`
+            * to order the execution use `join`
 * sometimes we want a child fiber to outlive the scope of the parent
     * operator called `forkDaemon` which forks the fiber as a daemon fiber
-    * Daemon fibers can outlive their parents. They can live forever
-        * They run in the background doing their work until they end with failure or success
-    * background jobs that should just keep on going
+        ```
+        trait ZIO[-R, +E, +A] {
+            def forkDaemon: URIO[R, Fiber[E, A]]
+        }
+        ```
+    * fork into a new fiber attached to the global scope
+    * they run in the background doing their work until they end with failure or success
+    * example: background jobs that should just keep on going
 * supervision
-    1. Every fiber has a scope
-    1. Every fiber is forked in a scope
-    1. Fibers are forked in the scope of the current fiber unless otherwise specified
-    1. The scope of a fiber is closed when the fiber terminates, either through success, failure, or interruption
-    1. When a scope is closed all fibers forked in that scope are interrupted
+    1. every fiber has a scope
+    1. every fiber is forked in a scope
+    1. fibers are forked in the scope of the current fiber unless otherwise specified
+    1. the scope of a fiber is closed when the fiber terminates, either through success, failure, or interruption
+    1. when a scope is closed all fibers forked in that scope are interrupted
     * summary: fibers can’t outlive the fiber that forked them
-* If you do need to create a fiber that outlives its parent (e.g. to create some background process) you can fork a fiber on the global scope using forkDaemon.
-  trait ZIO[-R, +E, +A] {
-  def forkDaemon: URIO[R, Fiber[E, A]]
-  }
-* Whenever we need to start a fiber, we have to fork an effect to get a new fiber. This is similar to the start method on Java thread or submitting a new thread to the thread pool in Java, it is the same idea. Also, joining is a way of waiting for that fiber to compute its value. We are going to wait until it's done and receive its result.
-* await
-  To inspect whether our fiber succeeded or failed, we can call await on that fiber. This call will wait for that fiber to terminate, and it will give us back the fiber's value as an Exit. That exit value could be failure or success:
-  * await is similar to join, but they react differently to errors and interruption: await always succeeds with Exit information, even if the fiber fails or is interrupted. In contrast to that, join on a fiber that fails will itself fail with the same error as the fiber, and join on a fiber that is interrupted will itself become interrupted.
-* to create a new fiber in ZIO, we must fork it from an instance of the ZIO effect
-   ```
-   trait ZIO[-R, +E, +A] {
-     def fork: URIO[R, Fiber[E, A]]
-   }
-   ```
-   * Forking creates a new fiber that executes the effect being forked concurrently with the current fiber.
-   * example
-        lazy val example2 = for { _ <- doSomething.fork
-        _ <- doSomethingElse
-        } yield ()
-        Here there is no guarantee about the order of execution of doSomething and doSomethingElse
-* Using ZIO#forkDaemon, the effect is fork into a new fiber attached to the global scope. This means that the forked fiber will continue to run when the previous fiber that executed the returned effect terminates.
 
 ### interrupting
 * by interrupting a fiber says that we do not need this fiber to do its work anymore
@@ -314,6 +313,11 @@
         * we can statically reason about the lifetimes of children fibers just by looking at our code
 
 ### join
+* await
+  To inspect whether our fiber succeeded or failed, we can call await on that fiber. This call will wait for that fiber to terminate, and it will give us back the fiber's value as an Exit. That exit value could be failure or success:
+  * await is similar to join, but they react differently to errors and interruption: await always succeeds with Exit information, even if the fiber fails or is interrupted. In contrast to that, join on a fiber that fails will itself fail with the same error as the fiber, and join on a fiber that is interrupted will itself become interrupted.
+
+* joining is a way of waiting for that fiber to compute its value. We are going to wait until it's done and receive its result
 * If the fiber already succeeded with its value when interrupted, then ZIO returns an instance of Exit.Success[A], an Exit.Failure[Cause.Interrupt] otherwise
   * Unlike interrupting a thread, interrupting a fiber is an easy operation
   * Interrupting a fiber simply tells the Executor that the fiber must not be scheduled anymore
