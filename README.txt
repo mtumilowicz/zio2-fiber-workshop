@@ -342,11 +342,13 @@
             * join on a fiber that is interrupted will itself become interrupted
 
 ### high level methods
-* To execute actions in parallel, the zipPar method can be used:
-    * The zipPar combinator has resource-safe semantics. If one computation fails, the other computation will be interrupted, to prevent wasting resources.
-* Two actions can be raced, which means they will be executed in parallel, and the value of the first action that completes successfully will be returned.
-    * The race combinator is resource-safe, which means that if one of the two actions returns a value, the other one will be interrupted, to prevent wasting resources.
 * usually you don't work with fork & join but with higher level operators:
-  * ZIO#foreachPar
-  * ZIO#zipPar
-  * ZIO#race
+    * `ZIO#foreachPar`
+    * `ZIO#zipPar`
+        * execute actions in parallel
+        * has resource-safe semantics
+            * if one computation fails, the other computation will be interrupted, to prevent wasting resources
+    * `ZIO#race`
+        * value of the first action that completes successfully will be returned
+        * has resource-safe semantics
+            * if one of the two actions returns a value, the other one will be interrupted, to prevent wasting resources
