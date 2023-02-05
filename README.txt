@@ -313,35 +313,33 @@
         * we can statically reason about the lifetimes of children fibers just by looking at our code
 
 ### join
-* await
-  To inspect whether our fiber succeeded or failed, we can call await on that fiber. This call will wait for that fiber to terminate, and it will give us back the fiber's value as an Exit. That exit value could be failure or success:
-  * await is similar to join, but they react differently to errors and interruption: await always succeeds with Exit information, even if the fiber fails or is interrupted. In contrast to that, join on a fiber that fails will itself fail with the same error as the fiber, and join on a fiber that is interrupted will itself become interrupted.
-
-* joining is a way of waiting for that fiber to compute its value. We are going to wait until it's done and receive its result
-* If the fiber already succeeded with its value when interrupted, then ZIO returns an instance of Exit.Success[A], an Exit.Failure[Cause.Interrupt] otherwise
-  * Unlike interrupting a thread, interrupting a fiber is an easy operation
-  * Interrupting a fiber simply tells the Executor that the fiber must not be scheduled anymore
-  * As the name suggests, an uninterruptible fiber will execute till the end even if it receives an interrupt signal.
-* ZIO fibers don’t block any thread during the waiting associated with the call of the join method
+* method to wait for the termination of a fiber
+      ```
+      trait Fiber[+E, +A] {
+        def join: IO[E, A]
+      }
+      ```
+* waits for the result of a computation being performed concurrently and makes it available to the current computation
 * fork means run in the background; join means wait for a result
-* ZIO fibers provide the join method to wait for the termination of a fiber:
+* execution in the current fiber can’t continue until the joined fiber completes execution
+* fibers don’t block any thread during the waiting associated with the call of the join method
+    * ZIO runtime registers a callback to be invoked when the forked fiber completes execution and
+    then the current fiber suspends execution
+* translates the result of joined fiber back to the current fiber
+    * joining a fiber that has failed will result in a failure
+* await
     ```
     trait Fiber[+E, +A] {
-      def join: IO[E, A]
+        def await: UIO[Exit[E, A]]
     }
     ```
-    * Through the join method, we can wait for the result of concurrent computation and eventually use it
-    * join waits for the result of a computation being performed concurrently and makes it available to the current computation.
-    * An important characteristic of join is that it does not block any underlying operating system threads
-        * When we join a fiber, execution in the current fiber can’t continue until the joined fiber completes execution
-        * But no actual thread will be blocked waiting for that to happen
-        * Instead, internally the ZIO runtime registers a callback to be invoked when the forked fiber completes execution and then the current fiber suspends execution
-    * Joining a fiber translates the result of that fiber back to the current fiber, so joining a fiber that has failed will result in a failure
-    * if we instead want to wait for the fiber but be able to handle its result whether it is a success or a failure we can use await
-        trait Fiber[+E, +A] {
-        def await: UIO[Exit[E, A]]
-        }
-* semantically block but never block underlying threads
+    * used to inspect whether our fiber succeeded or failed, we can call await on that fiber
+    * will wait for that fiber to terminate
+        * gives us back the fiber's value as an Exit
+    * similar to join, but they react differently to errors and interruption
+        * await always succeeds with Exit information, even if the fiber fails or is interrupted
+        * join on a fiber that fails will itself fail with the same error as the fiber
+            * join on a fiber that is interrupted will itself become interrupted
 
 ### high level methods
 * To execute actions in parallel, the zipPar method can be used:
