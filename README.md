@@ -20,6 +20,7 @@
     * https://medium.com/platform-engineer/understanding-jvm-architecture-22c0ddf09722
     * https://stackoverflow.com/questions/4967885/jvm-option-xss-what-does-it-do-exactly
     * https://www.quora.com/Why-a-context-switch-is-considered-an-overhead-task
+    * [The Great Concurrency Smackdown: ZIO versus JDK by John A. De Goes](https://www.youtube.com/watch?v=9I2xoQVzrhs)
 
 ## preface
 * goals of this workshop
@@ -98,8 +99,11 @@
         * mapping from JVM threads to operating system threads is one-to-one
             * imposes an upper bound on the number of threads
             * mapping of fibers to threads is many-to-one
-    * expensive on creation
-        * in terms of time and memory complexity
+    * resource consuming
+        * stack space
+        * jvm meta
+        * os descriptiors
+        * new gc root
     * overhead on context switching
         * in practice, the way the OS switches between threads and processes used to be
             1. interrupt the running thread
