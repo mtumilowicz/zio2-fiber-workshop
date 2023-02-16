@@ -119,7 +119,8 @@
             * expected to throw any exception of type Throwable to signal errors
     * no guaranteed way to stop a thread
         * thread can be interrupted via `Thread#interrupt` from another thread, but it may refuse the interruption request and continue processing
-
+    * not typed
+        * powered by `Runnable` through constructor `Thread(Runnable r)`, and `Runnable` is not typed
 
 ## zio fibers
 * other names
