@@ -21,6 +21,7 @@
     * https://stackoverflow.com/questions/4967885/jvm-option-xss-what-does-it-do-exactly
     * https://www.quora.com/Why-a-context-switch-is-considered-an-overhead-task
     * [The Great Concurrency Smackdown: ZIO versus JDK by John A. De Goes](https://www.youtube.com/watch?v=9I2xoQVzrhs)
+    * [The Rise Of Loom And The Evolution Of Reactive Programming](https://www.youtube.com/watch?v=SJeAb-XEIe8)
 
 ## preface
 * goals of this workshop
@@ -203,6 +204,10 @@
                     * then the other four fibers get to continue their work
                 * creates the result of all five fibers running concurrently
                     * even though only four are ever actually running at any given moment.
+* how fibers differ to virtual threads from loom project?
+   * libraries like ZIO allocate everything on heap (ZIO does not have a way to save stack and restore)
+   * virtual threads in loom allow you to save and restore a stack
+      * stack is significantly faster to use than heap
 
 ### fork
 * forking creates a new fiber that executes the effect being forked concurrently with the current fiber
