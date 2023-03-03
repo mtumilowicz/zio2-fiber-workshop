@@ -22,6 +22,7 @@
     * https://www.quora.com/Why-a-context-switch-is-considered-an-overhead-task
     * [The Great Concurrency Smackdown: ZIO versus JDK by John A. De Goes](https://www.youtube.com/watch?v=9I2xoQVzrhs)
     * [The Rise Of Loom And The Evolution Of Reactive Programming](https://www.youtube.com/watch?v=SJeAb-XEIe8)
+    * [Threading lightly with Kotlin by Vasco Veloso](https://www.youtube.com/watch?v=UdCxii0xihw)
 
 ## preface
 * goals of this workshop
@@ -143,7 +144,7 @@
             * it's a top-level fiber
     * analogy: main function in Java then that main function will execute on the main thread
 * fiber models a running computation and instructions on a single fiber are executed sequentially
-    * fibers give no guarantees as to which thread they execute on
+    * fibers give no guarantees as to which thread they execute on at any time
 * single JVM thread will execute many fibers
 * Cats Effect and ZIO both rely on fibers
 * it’s only a data structure
