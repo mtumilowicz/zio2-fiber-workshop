@@ -23,6 +23,7 @@
     * [The Great Concurrency Smackdown: ZIO versus JDK by John A. De Goes](https://www.youtube.com/watch?v=9I2xoQVzrhs)
     * [The Rise Of Loom And The Evolution Of Reactive Programming](https://www.youtube.com/watch?v=SJeAb-XEIe8)
     * [Threading lightly with Kotlin by Vasco Veloso](https://www.youtube.com/watch?v=UdCxii0xihw)
+    * [Zymposium - FiberRefs](https://www.youtube.com/watch?v=Lq_EI7l9rnA)
 
 ## preface
 * goals of this workshop
@@ -366,3 +367,80 @@
         * value of the first action that completes successfully will be returned
         * has resource-safe semantics
             * if one of the two actions returns a value, the other one will be interrupted, to prevent wasting resources
+
+### FiberRef
+* analogy: different threads have different ThreadLocal, different fibers have different FiberRefs
+    * FiberRef is the fiber version of ThreadLocal with significant improvements in its semantics
+* design difference to ThreadLocal
+    * ThreadLocal only has a mutable state in which each thread accesses its own copy, but threads 
+    don't propagate their state to their children's
+* different fibers who hold the same FiberRef[A] can independently set and retrieve values of the reference, 
+without collisions
+* whenever a child's fiber is created from its parent, the FiberRef value of parent fiber propagated to its child fibers
+    * vs ThreadLocal
+        * ThreadLocals do not propagate their values across the sort of graph of threads
+        * ThreadLocal value is not propagated from parent to child
+    * when the child set a new value of FiberRef, the change is visible only to the child itself
+        * if we join a fiber then its FiberRef is merged back into the parent fiber
+            * by default: the last fiber which is going to join will override the parent's FiberRef value
+            * customization: FiberRef.make(initial = A, join = (A, A) => A)
+                * example
+                    ```
+                    FiberRef.make[Map[String, String])(Map.empty, join = _ ++ _)
+                    ```
+            * join has higher-level semantics that `await` because it will fail if the child fiber failed
+                * and it will also merge back its value to its parent
+* FiberRef is automatically garbage collected once the Fiber owning it is finished
+* vs Ref
+    * Ref = one variable shared between different fibers
+        * used for communicating between fibers
+    * FiberRef = each fiber gets its own copy of the FiberRef
+        * used for maintaining some scoped state or context
+            * example: LoggingContext
+    * example
+        * Ref
+            ```
+            val refExample = for {
+                ref <- Ref.make("V1")
+                v2 = ref.set("V2") *> ref.get.debug("V2?") *> ref.set("V1")
+                v3 = ref.set("V3") *> ref.get.debug("V3?") *> ref.set("V1")
+                _ <- v2.zipPar(v3)
+            } yield ()
+            ```
+            result
+            ```
+            V2?: V2 // or V3
+            V3?: V2 // or V3
+            ```
+        * FiberRef
+            ```
+            val fiberRefExample = for {
+                ref <- FiberRef.make("V1")
+                v2 = ref.set("V2") *> ref.get.debug("V2?") *> ref.set("V1")
+                v3 = ref.set("V3") *> ref.get.debug("V3?") *> ref.set("V1")
+                _ <- v2.zipPar(v3) // here we join a fiber
+            } yield ()
+            ```
+            result
+            ```
+            V2?: V2 // always
+            V3?: V3 // always
+            ```
+* use `locally` to scope FiberRef value only for a given effect
+    * example
+        ```
+        ref <- FiberRef.make("a")
+        fiber <- ref.locally("b")(ref.get.flatMap(Console.printLine)).fork // prints b; try replace it with set
+        _ <- fiber.join
+        _ <- ref.get.flatMap(Console.printLine) // prints a
+        ```
+    * implementation
+        ```
+        def locally[R, E, B](newValue: A)(zio: ZIO[R, E, B])(implicit trace: Trace): ZIO[R, E, B] =
+            ZIO.acquireReleaseWith(get <* set(newValue))(set)(_ => zio)
+        ```
+        * `<*`: sequences the specified effect after this effect, but ignores the value produced by this effect
+            ```
+            final def <*[R1 <: R, E1 >: E, B](that: => ZIO[R1, E1, B])(implicit trace: Trace): ZIO[R1, E1, A] =
+              self.flatMap(a => that.as(a))
+            ```
