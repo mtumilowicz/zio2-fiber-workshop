@@ -105,7 +105,7 @@
     * resource consuming
         * stack space
         * jvm meta
-        * os descriptiors
+        * os descriptors
         * new gc root
     * overhead on context switching
         * in practice, the way the OS switches between threads and processes used to be
