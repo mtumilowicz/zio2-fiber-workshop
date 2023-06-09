@@ -139,11 +139,11 @@
     * it’s a concurrency model
     * we’re measuring threads versus CPU cores and fibers versus GB of heap
 * in the ZIO model, all code runs on fibers
-    * there is no code in Java that does not execute on a thread
+    * analogy: there is no code in Java that does not execute on a thread
     * example: main function in ZIO that returns an effect
         * we don't explicitly fork a fiber, the effect will be executed on what is called the main fiber
             * it's a top-level fiber
-    * analogy: main function in Java then that main function will execute on the main thread
+            * analogy: main function in Java will execute on the main thread
 * fiber models a running computation and instructions on a single fiber are executed sequentially
     * fibers give no guarantees as to which thread they execute on at any time
 * single JVM thread will execute many fibers
@@ -256,14 +256,14 @@
     }
     ```
 * several cases that we need to interrupt the execution of other fibers
-    * parent fiber started child fibers and later decide that it doesn't need the result of some
-    * two fibers start race with each other
+    1. parent fiber started child fibers and later decide that it doesn't need the result of some
+    1. two fibers start race with each other
         * the loser of a race, if still running, is canceled
-    * user may want to stop some already running tasks
+    1. user may want to stop some already running tasks
         * example: clicking on the "stop" button to prevent downloading more files
-    * timeouts: computations run longer than expected
-    * one effect fails during the execution of many effects in parallel => the others will be canceled
-    * ZIO performs automatic interruption for this reasons
+    1. timeouts: computations run longer than expected
+    1. one effect fails during the execution of many effects in parallel => the others will be canceled
+    1. ZIO performs automatic interruption for this reasons
 * interrupting running fiber causes any finalizers associated with that fiber to be run
     * when we interrupt a thread we have no guarantee that any finalizers will be executed
         * we could leave the system in an inconsistent state
@@ -305,13 +305,13 @@
         * used by: imperative languages
             * example: java
         * target fiber keep polling the interrupt status
-            * based on the interrupt status will find out that weather there is an interruption request or not
+            * based on the interrupt status will find out that whether there is an interruption request or not
         * fiber itself takes care of critical sections
             * should ignore the interruption and postpone the delivery of interruption during the critical section
         * drawback
             * if the programmer forget to poll regularly enough, then the target fiber become unresponsive
             and cause deadlocks
-            * what is more: polling a global flag is not a functional operation, that doesn't fit with ZIO's paradigm
+            * what is more: polling a global flag is not a functional operation (doesn't fit with ZIO's paradigm)
     * asynchronous
         * in critical sections the target fiber disable the interruptibility of these regions
         * purely-functional solution and doesn't require to poll a global state
@@ -322,7 +322,6 @@
         * parent fiber is interrupted => all its children interrupted
         * parent has completed its job => child fiber will be interrupted
             * solution: join its parent
-
     * it is almost impossible to leak fibers because child fibers are guaranteed to complete before their parents
     * gives us a way to reason about fiber lifespans
         * we can statically reason about the lifetimes of children fibers just by looking at our code
