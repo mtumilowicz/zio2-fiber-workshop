@@ -370,6 +370,9 @@
 ### FiberRef
 * analogy: different threads have different ThreadLocal, different fibers have different FiberRefs
     * FiberRef is the fiber version of ThreadLocal with significant improvements in its semantics
+* use whenever you want "context" that is not reflected in the environment type
+    * context = all the information workflow needs to have that isn't reflected in the arguments to the function
+    that creates it
 * design difference to ThreadLocal
     * ThreadLocal only has a mutable state in which each thread accesses its own copy, but threads 
     don't propagate their state to their children's
@@ -382,20 +385,67 @@ without collisions
     * when the child set a new value of FiberRef, the change is visible only to the child itself
         * if we join a fiber then its FiberRef is merged back into the parent fiber
             * by default: the last fiber which is going to join will override the parent's FiberRef value
+                * patch theory
+                    * GIT analogy
+                        * main: parent fiber
+                        * branch1: left fiber
+                        * branch2: right fiber
+                    * example
+                        ```
+                        trait FiberRef[A] {
+                          def diff(oldValue: Value, newValue: Value): Patch // oldValue = branch1, newValue = branch2, we can diff to create data structure describing update
+                          def combine(first: Patch, second: Patch): Patch // git squash
+                          def patch(patch: Patch)(oldValue: Value): Value // oldValue = code, patch - MR
+                        }
+                        ```
             * customization: FiberRef.make(initial = A, join = (A, A) => A)
                 * example
                     ```
-                    FiberRef.make[Map[String, String])(Map.empty, join = _ ++ _)
+                    val run = for {
+                        _ <- withRetries(5).zip(withRetryInterval(200))
+                        _ <- retryConfig.get.debug("retryConfig")
+                        // zip - both branches are included: withRetries and withRetryInterval
+                        // in case of zipPar, only right part will be included
+                    } yield ()
                     ```
             * join has higher-level semantics that `await` because it will fail if the child fiber failed
                 * and it will also merge back its value to its parent
 * FiberRef is automatically garbage collected once the Fiber owning it is finished
+    ```
+    def make[A](
+      initial: => A,
+      fork: A => A = (a: A) => a,
+      join: (A, A) => A = ((_: A, a: A) => a)
+    )(implicit trace: Trace): ZIO[Scope, Nothing, FiberRef[A]] =
+      makeWith(unsafe.make(initial, fork, join)(Unsafe.unsafe))
+
+    private def makeWith[Value, Patch](
+      ref: => FiberRef.WithPatch[Value, Patch]
+    )(implicit trace: Trace): ZIO[Scope, Nothing, FiberRef.WithPatch[Value, Patch]] =
+      ZIO.acquireRelease(ZIO.succeed(ref).tap(_.update(identity)))(_.delete)
+    ```
 * vs Ref
     * Ref = one variable shared between different fibers
         * used for communicating between fibers
     * FiberRef = each fiber gets its own copy of the FiberRef
         * used for maintaining some scoped state or context
             * example: LoggingContext
+    * with FiberRef we are free to do as many separate get and set as we want
+        ```
+        val retryConfig: FiberRef[Map[String, Int]] =
+            Unsafe.unsafe { implicit unsafe =>
+                FiberRef.unsafe.make(Map("retries" -> 3, "retryInterval" -> 100))
+            }
+
+        def withRetries(n: Int): Task[Unit] =
+            for {
+                map <- retryConfig.get
+                _   <- retryConfig.set(map.updated("retries", n))
+            } yield ()
+        ```
+        * with Ref it would not be a good thing
+            * no guarantee to be done atomically
+            * vs FiberRef: each FiberRef is always updating its own copy
     * example
         * Ref
             ```
