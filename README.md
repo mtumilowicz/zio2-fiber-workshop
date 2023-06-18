@@ -24,6 +24,7 @@
     * [The Rise Of Loom And The Evolution Of Reactive Programming](https://www.youtube.com/watch?v=SJeAb-XEIe8)
     * [Threading lightly with Kotlin by Vasco Veloso](https://www.youtube.com/watch?v=UdCxii0xihw)
     * [Zymposium - FiberRefs](https://www.youtube.com/watch?v=Lq_EI7l9rnA)
+    * [Zymposium - Implementing a New ZIO Feature](https://www.youtube.com/watch?v=RA24E-674MY)
 
 ## preface
 * goals of this workshop
