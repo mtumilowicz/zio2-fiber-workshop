@@ -25,6 +25,7 @@
     * [Threading lightly with Kotlin by Vasco Veloso](https://www.youtube.com/watch?v=UdCxii0xihw)
     * [Zymposium - FiberRefs](https://www.youtube.com/watch?v=Lq_EI7l9rnA)
     * [Zymposium - Implementing a New ZIO Feature](https://www.youtube.com/watch?v=RA24E-674MY)
+    * [[VDBUH22] Riccardo Lippolis - Concurrency made easy with Kotlin Coroutines](https://www.youtube.com/watch?v=k7JUObP6PeI)
 
 ## preface
 * goals of this workshop
@@ -60,6 +61,8 @@
     * cooperative scheduling
         * fibers yield to each other as required to preserve some level of fairness
     * preemptive scheduling
+        * cooperative multitasking (also known as non-preemptive multitasking) is a style of computer multitasking in which the operating system never initiates a context switch from a running process to another process
+           * instead, in order to run multuple applications concurrently, processes coluntarily yield control periodically or when idle or logically blocked
         * you don’t have to yield to other threads to allow them to run
         * most operating systems (OS) schedule threads preemptively
         * when OS may decide to preempt a thread include?
