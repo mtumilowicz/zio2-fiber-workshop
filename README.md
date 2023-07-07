@@ -142,6 +142,8 @@
             * by hopping back and forth between them as necessary   
     * may have relevant impact on the GC
         * uses heap to store stacks
+        * but: if you run 1000 virtual threads by 8 native threads you have only 8 additional gc roots (not 1000)
+    * massive context switches (in user space) of a huge number of virtual threads can potentially cause a larger amount of cache misses
     * is a concept that is beyond the ZIO library
     * it’s a concurrency model
     * we’re measuring threads versus CPU cores and fibers versus GB of heap
