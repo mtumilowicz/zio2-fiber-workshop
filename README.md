@@ -135,11 +135,13 @@
     * green threads
     * user-space threads
     * coroutines
-* virtual threads that have the benefits of threads
+* virtual threads
     * scalability way beyond threads
         * each JVM thread will end up executing anywhere from hundreds to thousands or even tens
         of thousands of fibers concurrently
-            * by hopping back and forth between them as necessary
+            * by hopping back and forth between them as necessary   
+    * may have relevant impact on the GC
+        * uses heap to store stacks
     * is a concept that is beyond the ZIO library
     * it’s a concurrency model
     * we’re measuring threads versus CPU cores and fibers versus GB of heap
