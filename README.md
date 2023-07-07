@@ -26,6 +26,7 @@
     * [Zymposium - FiberRefs](https://www.youtube.com/watch?v=Lq_EI7l9rnA)
     * [Zymposium - Implementing a New ZIO Feature](https://www.youtube.com/watch?v=RA24E-674MY)
     * [[VDBUH22] Riccardo Lippolis - Concurrency made easy with Kotlin Coroutines](https://www.youtube.com/watch?v=k7JUObP6PeI)
+    * [Game of Loom: implementation patterns [...] playing with virtual threads by Mario Fusco](https://www.youtube.com/watch?v=70aNTos4Lrc)
 
 ## preface
 * goals of this workshop
@@ -142,6 +143,12 @@
     * is a concept that is beyond the ZIO library
     * it’s a concurrency model
     * we’re measuring threads versus CPU cores and fibers versus GB of heap
+    * comparison
+      |                 |native            |virtual                             |
+      |---              |---               |---                                 |
+      |metadata         |2kB               |200-300B                            |
+      |stack            |preallocated 1MB  |allocated on heap (pay-as-you-go)   |
+      |context switch   |1-10 µs           | some ns                            |
 * in the ZIO model, all code runs on fibers
     * analogy: there is no code in Java that does not execute on a thread
     * example: main function in ZIO that returns an effect
